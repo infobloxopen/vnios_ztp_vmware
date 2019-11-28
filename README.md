@@ -6,4 +6,4 @@ nios_details.ini is feeder file for the vnios_ztp_vmware.yaml file. Please updat
 Under resoucces section of nios_details.in file please enter ram in MB. 
 
 
-For any queries/clarification feel free send an email to asahu@infoblox.com
+For any queries/clarification feel free to send an email to asahu@infoblox.com
