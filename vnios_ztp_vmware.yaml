@@ -1,0 +1,227 @@
+---
+ 
+- hosts: localhost
+  connection: local
+
+  vars_prompt:
+   - name: "gm_license"
+     prompt : "Please enter vnios license strings separated by a space for grid master(ex. nios IB-V815 enterprise dns dhcp cloud)"
+     private: no
+   - name: "member_license"
+     prompt: "Please enter vnios license strings separated by a space for members(ex. nios IB-V1425 enterprise)"
+     private: no     
+
+ ##cloud-init license strings separated by a space  can be used in this playbook
+ 
+## String	License description
+## nios          NIOS license
+## dns	        DNS server
+## dhcp	        DHCP server
+## enterprise	Grid license
+## vnios	vNIOS license
+## cloud	Cloud Network Automation
+## cloud_api	Cloud Platform license
+## load_bal	Load Balancer license
+## ms_management  Microsoft management license
+## qrd	         Query Redirection license
+## dnsqrw	DNS Query Rewrite license
+## dtc	        DNS Traffic Control license
+## rpz	        Response Policy Zones license
+## fireeye	FireEye license
+## threat_anl	Threat Analytics license
+## sw_tp	Threat Protection (Software add-on) license
+## tp_sub	Threat Protection Update license
+## sec_eco	Security Ecosystem license
+## flex_grid	Flex Grid Activation ("Organization") license
+
+
+  vars: 
+ #vcenter server fqdn or IP
+   vc_hostname: "x.x.x.x"
+ #vcenter server user_id
+   vc_username: "root"
+ #vcenter server password
+   vc_password: "password"
+ #vcenter server datacenter name
+   vc_datacenter: "India"
+ #vcenter server cluster name
+   vc_cluster: "Compute"
+ #vcenter server datastore name
+   vc_datastore: "Dell_Datastore_10TB_1"
+ #vcenter network name connected to vnios
+   vm_network: "Internet-200-24"
+   nios_details:
+      grid_master:
+        name: "{{ lookup('ini', 'name section=gm file=nios_details.ini') }}"
+        ip: "{{ lookup('ini', 'ip_address section=gm file=nios_details.ini') }}"
+        netmask: "{{ lookup('ini', 'netmask section=gm file=nios_details.ini') }}"
+        gw: "{{ lookup('ini', 'gateway section=gm file=nios_details.ini') }}"
+      member01:
+        name: "{{ lookup('ini', 'name section=member01 file=nios_details.ini') }}"
+        ip: "{{ lookup('ini', 'ip_address section=member01 file=nios_details.ini') }}"
+        netmask: "{{ lookup('ini', 'netmask section=member01 file=nios_details.ini') }}"
+        gw: "{{ lookup('ini', 'gateway section=member01 file=nios_details.ini') }}"
+      member02:
+        name: "{{ lookup('ini', 'name section=member02 file=nios_details.ini') }}"
+        ip: "{{ lookup('ini', 'ip_address section=member02 file=nios_details.ini') }}"
+        netmask: "{{ lookup('ini', 'netmask section=member02 file=nios_details.ini') }}"
+        gw: "{{ lookup('ini', 'gateway section=member02 file=nios_details.ini') }}"
+   nios_provider:
+        host: "{{ lookup('ini', 'ip_address section=gm file=nios_details.ini') }}"
+        username: "{{ lookup('ini', 'user_id section=grid_details file=nios_details.ini') }}"
+        password: "{{ lookup('ini', 'password section=grid_details file=nios_details.ini') }}"
+        wapi_version: 2.6 
+  tasks:
+
+  - name: Deploy gridmaster  
+    vmware_deploy_ovf:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password:  "{{ vc_password }}"
+      datacenter: "{{ vc_datacenter }}"
+      cluster: "{{ vc_cluster }}"
+      datastore: "{{ vc_datastore }}"
+      name:  "{{item.value.name}}"
+      networks: "{u'VM Network':u'{{ vm_network }}'}"
+      disk_provisioning: "thin"
+      validate_certs: no
+      power_on: no
+ #absolute path of the vnios ovf file   
+      ovf: /root/nios_ztp_vmware/nios-8.1.6-360192-2017-08-25-21-04-00-ddi.ova
+      inject_ovf_env: yes
+      properties:
+        temp_license: "{{gm_license}}"
+        lan1-v4_addr: "{{item.value.ip}}"
+        lan1-v4_netmask: "{{item.value.netmask}}"
+        lan1-v4_gw: "{{item.value.gw}}"
+        default_admin_password: infoblox
+    with_dict: "{{ nios_details }}"
+    when: "'member01' not in item.key and 'member02' not in item.key"
+
+  - name: Deploy members
+    vmware_deploy_ovf:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password:  "{{ vc_password }}"
+      datacenter: "{{ vc_datacenter }}"
+      cluster: "{{ vc_cluster }}"
+      datastore: "{{ vc_datastore }}"
+      name:  "{{item.value.name}}"
+      networks: "{u'VM Network':u'{{ vm_network }}'}"
+      disk_provisioning: "thin"
+      validate_certs: no
+      power_on: no
+ #absolute path of the vnios ovf file
+      ovf: /root/nios_ztp_vmware/nios-8.1.6-360192-2017-08-25-21-04-00-ddi.ova
+      inject_ovf_env: yes
+      properties:
+        temp_license: "{{member_license}}"
+        lan1-v4_addr: "{{item.value.ip}}"
+        lan1-v4_netmask: "{{item.value.netmask}}"
+        lan1-v4_gw: "{{item.value.gw}}"
+        default_admin_password: infoblox
+    with_dict: "{{ nios_details }}"
+    when: " 'grid_master' not in item.key"
+
+  - name: Modify member resources
+    vmware_guest:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password: "{{ vc_password }}"
+      name: "{{item.value.name}}"
+      state: present
+      validate_certs: no
+      hardware:
+          memory_mb: "{{ lookup('ini', 'mem_ram section=resources file=nios_details.ini') }}"
+          num_cpus: "{{ lookup('ini', 'mem_cpu section=resources file=nios_details.ini') }}"
+    with_dict: "{{nios_details}}"
+    when: "'grid_master' not in item.key"
+
+  - name: Modify gridmaster resources
+    vmware_guest:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password: "{{ vc_password }}"
+      name: "{{item.value.name}}"
+      state: present
+      validate_certs: no
+      hardware:
+          memory_mb: "{{ lookup('ini', 'gm_ram section=resources file=nios_details.ini') }}"
+          num_cpus: "{{ lookup('ini', 'gm_cpu section=resources file=nios_details.ini') }}"
+    with_dict: "{{nios_details}}"
+    when: "'member01' not in item.key and 'member02' not in item.key" 
+
+  - name: Power on gridmaster and members
+    vmware_guest:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password: "{{ vc_password }}"
+      name: "{{item.value.name}}"
+      state: poweredon
+      validate_certs: no
+    with_dict: "{{nios_details}}"
+    
+  - name: Wait for gridmaster to come online
+    command: curl --head --insecure "https://{{ lookup('ini', 'ip_address section=gm file=nios_details.ini') }}"
+    register: result
+    until: result.stdout.find("302 Found")!= -1
+    retries: 50
+    delay: 10
+    changed_when: false
+
+  - name: Wait for httpd service to be active
+    pause:
+     seconds: 20
+
+  - name: Pre-provision members in gridmaster
+    nios_member:
+      host_name: "{{item.value.name}}"
+      vip_setting:
+       - address: "{{item.value.ip}}"
+         subnet_mask: "{{item.value.netmask}}"
+         gateway: "{{item.value.gw}}"
+      config_addr_type: IPV4
+      platform: VNIOS
+      comment: "Created by Ansible"
+      state: present
+      provider: "{{ nios_provider }}"
+    with_dict: "{{nios_details}}"
+    when: "'grid_master' not in  item.key"
+    
+  - name: Wait for vnios members to come online
+    pause:
+      seconds: 15
+
+  - name: Adding vnios members to the grid 
+    uri:
+      url: "https://{{item.value.ip}}/wapi/v2.6/grid?_function=join&_return_as_object=1"
+      method: POST
+      user: "{{ lookup('ini', 'user_id section=grid_details file=nios_details.ini') }}"
+      password: "{{ lookup('ini', 'password section=grid_details file=nios_details.ini') }}"
+      status_code: 201,302,200
+      method: POST
+      header:
+         Content-Type: "application/json"
+      body:
+        grid_name: "{{ lookup('ini', 'grid_name section=grid_details file=nios_details.ini') }}"
+        shared_secret: "{{ lookup('ini', 'shared_secret section=grid_details file=nios_details.ini') }}"
+        master: "{{ lookup('ini', 'ip_address section=gm file=nios_details.ini') }}" 
+      body_format: json
+      validate_certs: no
+      return_content: yes
+    with_dict: "{{nios_details}}"
+    when : "'grid_master' not in item.key"
+
+...  
+
+
+
+
+
+
+
+
+
+
+
+
