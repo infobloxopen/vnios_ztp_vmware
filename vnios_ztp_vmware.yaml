@@ -11,7 +11,7 @@
      prompt: "Please enter vnios license strings separated by a space for members(ex. nios IB-V1425 enterprise)"
      private: no     
 
- ##cloud-init license strings separated by a space  can be used in this playbook
+ ##Following cloud-init license strings separated by a space can be used in this playbook
  
 ## String	License description
 ## nios          NIOS license
