@@ -10,4 +10,4 @@ Pre-requisites::
 Ansible server must have pyvmomi and python-infoblox client installed. 
 
 Tested on Ansible 2.8 and vsphere 6.5
-For any queries/clarification feel free to send an email to asahu@infoblox.com
+For any queries/clarifications feel free to send an email to asahu@infoblox.com
