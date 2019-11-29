@@ -192,7 +192,7 @@
     pause:
       seconds: 15
 
-  - name: Adding vnios members to the grid 
+  - name: Add vnios members to the grid 
     uri:
       url: "https://{{item.value.ip}}/wapi/v2.6/grid?_function=join&_return_as_object=1"
       method: POST
