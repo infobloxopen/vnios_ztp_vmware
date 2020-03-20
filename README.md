@@ -12,3 +12,5 @@ Ansible server must have pyvmomi and python-infoblox client installed.
 Tested on Ansible:2.8.5, pyvmomi:6.7.1, infoblox-client:0.4.23 and vsphere 6.5
 
 For any queries/clarifications feel free to send an email to asahu@infoblox.com
+
+Youtube video --> https://www.youtube.com/watch?v=OmLZF763C34
