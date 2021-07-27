@@ -1,0 +1,195 @@
+---
+
+- hosts: localhost
+  connection: local
+
+  vars_prompt:
+   - name: "gm_license"
+     prompt : "Please enter vnios license strings separated by a space for grid masters(ex. nios IB-V815 enterprise dns dhcp cloud)"
+     private: no
+
+ ##Following cloud-init license strings separated by a space can be used in this playbook
+
+## String       License description
+## nios          NIOS license
+## dns          DNS server
+## dhcp         DHCP server
+## enterprise   Grid license
+## vnios        vNIOS license
+## cloud        Cloud Network Automation
+## cloud_api    Cloud Platform license
+## load_bal     Load Balancer license
+## ms_management  Microsoft management license
+## qrd           Query Redirection license
+## dnsqrw       DNS Query Rewrite license
+## dtc          DNS Traffic Control license
+## rpz          Response Policy Zones license
+## fireeye      FireEye license
+## threat_anl   Threat Analytics license
+## sw_tp        Threat Protection (Software add-on) license
+## tp_sub       Threat Protection Update license
+## sec_eco      Security Ecosystem license
+## flex_grid    Flex Grid Activation ("Organization") license
+
+
+  vars: 
+ #vcenter server fqdn or IP
+   vc_hostname: "x.x.x.x"
+ #vcenter server user_id
+   vc_username: "root"
+ #vcenter server password
+   vc_password: "password"
+ #vcenter server datacenter name
+   vc_datacenter: "India"
+ #vcenter server cluster name
+   vc_cluster: "Compute"
+ #vcenter server datastore name
+   vc_datastore: "Dell_Datastore_10TB_1"
+ #vcenter network name connected to vnios
+   vm_network: "Internet-200-24"
+   nios_details:
+      grid_master1:
+        name: "{{ lookup('ini', 'name section=gm1 file=nios_details_HA.ini') }}"
+        vm_name: "{{ lookup('ini', 'vm_name section=gm1 file=nios_details_HA.ini') }}"
+        ip: "{{ lookup('ini', 'ip_address_lan1 section=gm1 file=nios_details_HA.ini') }}"
+        netmask: "{{ lookup('ini', 'netmask section=gm1 file=nios_details_HA.ini') }}"
+        gw: "{{ lookup('ini', 'gateway section=gm1 file=nios_details_HA.ini') }}"
+      grid_master2:
+        name: "{{ lookup('ini', 'name section=gm2 file=nios_details_HA.ini') }}"
+        vm_name: "{{ lookup('ini', 'vm_name section=gm2 file=nios_details_HA.ini') }}"
+        ip: "{{ lookup('ini', 'ip_address_lan1 section=gm2 file=nios_details_HA.ini') }}"
+        netmask: "{{ lookup('ini', 'netmask section=gm2 file=nios_details_HA.ini') }}"
+        gw: "{{ lookup('ini', 'gateway section=gm2 file=nios_details_HA.ini') }}"
+      ha_config:
+        name: "{{ lookup('ini', 'name section=gm1 file=nios_details_HA.ini') }}"
+        netmask: "{{ lookup('ini', 'netmask section=ha_config file=nios_details_HA.ini') }}"
+        gw: "{{ lookup('ini', 'gateway section=ha_config file=nios_details_HA.ini') }}"
+        vip: "{{ lookup('ini', 'vip section=ha_config file=nios_details_HA.ini') }}"
+        vrid: "{{ lookup('ini', 'vrid section=ha_config file=nios_details_HA.ini') }}"
+        gm1_lan1: "{{ lookup('ini', 'ip_address_lan1 section=gm1 file=nios_details_HA.ini') }}"
+        gm1_ha: "{{ lookup('ini', 'ip_address_ha section=gm1 file=nios_details_HA.ini') }}"
+        gm2_lan1: "{{ lookup('ini', 'ip_address_lan1 section=gm2 file=nios_details_HA.ini') }}"
+        gm2_ha: "{{ lookup('ini', 'ip_address_ha section=gm2 file=nios_details_HA.ini') }}"
+   nios_provider:
+        host: "{{ lookup('ini', 'ip_address_lan1 section=gm1 file=nios_details_HA.ini') }}"
+        username: "{{ lookup('ini', 'user_id section=grid_details file=nios_details_HA.ini') }}"
+        password: "{{ lookup('ini', 'password section=grid_details file=nios_details_HA.ini') }}"
+        wapi_version: 2.11
+
+  tasks:
+
+  - name: Deploy gridmasters
+    vmware_deploy_ovf:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password:  "{{ vc_password }}"
+      datacenter: "{{ vc_datacenter }}"
+      cluster: "{{ vc_cluster }}"
+      datastore: "{{ vc_datastore }}"
+      name:  "{{item.value.vm_name}}"
+      networks: "{u'VM Network':u'{{ vm_network }}'}"
+      disk_provisioning: "thin"
+      validate_certs: no
+      power_on: no
+ #absolute path of the vnios ovf file
+      ovf: /home/infoblox/Desktop/Ansible/vnios_ztp_vmware/nios-8.6.0-410755-2021-04-06-11-30-01-ddi.ova
+      inject_ovf_env: yes
+      properties:
+        temp_license: "{{gm_license}}"
+        lan1-v4_addr: "{{item.value.ip}}"
+        lan1-v4_netmask: "{{item.value.netmask}}"
+        lan1-v4_gw: "{{item.value.gw}}"
+        default_admin_password: infoblox
+    with_dict: "{{ nios_details }}"
+    when: "'ha_config' not in item.key"
+
+
+  - name: Modify gridmaster resources
+    vmware_guest:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password: "{{ vc_password }}"
+      name: "{{item.value.vm_name}}"
+      folder: /
+      state: present
+      validate_certs: no
+      hardware:
+          memory_mb: "{{ lookup('ini', 'gm_ram section=resources file=nios_details_HA.ini') }}"
+          num_cpus: "{{ lookup('ini', 'gm_cpu section=resources file=nios_details_HA.ini') }}"
+    with_dict: "{{nios_details}}"
+    when: "'ha_config' not in item.key"
+
+  - name: Power on gridmaster and members
+    vmware_guest:
+      hostname: "{{ vc_hostname }}"
+      username: "{{ vc_username }}"
+      password: "{{ vc_password }}"
+      name: "{{item.value.vm_name}}"
+      state: poweredon
+      folder: /
+      validate_certs: no
+    with_dict: "{{nios_details}}"
+    when: "'ha_config' not in item.key"
+
+  - name: Wait for gridmaster1 to come online
+    command: curl --head --insecure "https://{{ lookup('ini', 'ip_address_lan1 section=gm1 file=nios_details_HA.ini') }}"
+    register: result
+    until: result.stdout.find("302 Found")!= -1
+    retries: 50
+    delay: 10
+    changed_when: false
+
+  - name: Wait for httpd service to be active
+    pause:
+     seconds: 20
+
+  - name: Pre-provision members in gridmaster
+    nios_member:
+      host_name: "{{item.value.name}}"
+      vip_setting:
+       - address: "{{item.value.vip}}"
+         subnet_mask: "{{item.value.netmask}}"
+         gateway: "{{item.value.gw}}"
+      config_addr_type: IPV4
+      platform: VNIOS
+      enable_ha: true
+      router_id: "{{item.value.vrid}}"
+      upgrade_group: "Grid Master"
+      node_info:
+       - lan_ha_port_setting:
+          - ha_ip_address: "{{item.value.gm1_ha}}"
+            mgmt_lan: "{{item.value.gm1_lan1}}"
+       - lan_ha_port_setting:
+          - ha_ip_address: "{{item.value.gm2_ha}}"
+            mgmt_lan: "{{item.value.gm2_lan1}}"
+      comment: "Created by Ansible"
+      state: present
+      provider: "{{ nios_provider }}"
+    with_dict: "{{nios_details}}"
+    when: "'grid_master1' not in  item.key and 'grid_master2' not in item.key"
+
+
+  - name: Wait for vnios members to come online
+    pause:
+      seconds: 15
+
+  - name: Add vnios members to the grid
+    uri:
+      url: "https://{{item.value.ip}}/wapi/v2.11/grid?_function=join&_return_as_object=1"
+      method: POST
+      url_username: "{{ lookup('ini', 'user_id section=grid_details file=nios_details_HA.ini') }}"
+      url_password: "{{ lookup('ini', 'password section=grid_details file=nios_details_HA.ini') }}"
+      status_code: 201,302,200
+      method: POST
+      headers:
+         Content-Type: "application/json"
+      body:
+        grid_name: "{{ lookup('ini', 'grid_name section=grid_details file=nios_details_HA.ini') }}"
+        shared_secret: "{{ lookup('ini', 'shared_secret section=grid_details file=nios_details_HA.ini') }}"
+        master: "{{ lookup('ini', 'vip section=ha_config file=nios_details_HA.ini') }}"
+      body_format: json
+      validate_certs: no
+      return_content: yes
+    with_dict: "{{nios_details}}"
+    when : "'grid_master2' in item.key"
+...
